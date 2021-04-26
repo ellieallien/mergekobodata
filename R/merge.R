@@ -9,8 +9,10 @@
 #' @param add_file_reference If TRUE (default), adds a new column called `MERGED_FROM_FILE` containing the file name of each records source file.
 #' @param write_log if TRUE, writes an html file with a log of the merge and subsequent checks.
 #' @param verbose if TRUE writes messages to console during merge; set to FALSE to make quiet.
+#' @param fill if TRUE fills columns that are empty in some files with NA (conserves all columns), if FALSE keeps only columns present in all data
 #' @return the merged data frame.
-merge_kobo_data<-function(folder,filename_pattern='.',output_file=NULL,write_log=T,use_regex=F,add_file_reference=T,verbose=T){
+merge_kobo_data<-function(folder,filename_pattern='.',output_file=NULL,write_log=T,use_regex=F,
+                          add_file_reference=T,verbose=T, fill = TRUE){
 
   find_files<-function(folder,filename_pattern='.',use_regex=use_regex){
     filenames<- grep(filename_pattern,list.files(folder),fixed = !use_regex,value=T)
@@ -51,7 +53,8 @@ merge_kobo_data<-function(folder,filename_pattern='.',output_file=NULL,write_log
   # load all datasets from csv
   filepaths<-paste0(folder,'/',filenames)
   if(verbose){message(paste0(c('merging files:',filepaths),collapse='\n'))}
-  d<-lapply(filepaths,utils::read.csv,stringsAsFactors=F)
+  tryCatch( { d <-lapply(filepaths,utils::read.csv,stringsAsFactors=F)},error = function(e) {
+    d <<- lapply(filepaths,utils::read.csv2,stringsAsFactors=F)})
   if(add_file_reference){
   # add source file references
   add_source_file_reference<-function(fn,d){d$MERGED_FROM_FILE<-gsub('\\.csv','',fn);d}
@@ -59,7 +62,14 @@ merge_kobo_data<-function(folder,filename_pattern='.',output_file=NULL,write_log
   }
 
   # bind datasets together and fill missing columns with NA:
-  combined<-do.call((plyr::rbind.fill),d)
+  if(fill == TRUE){
+    combined<-do.call((plyr::rbind.fill),d)}else{
+      colnames <- lapply(d, names)
+      common_columns <- Reduce(intersect, colnames)
+      combined<-do.call((plyr::rbind.fill),d)
+      combined<- combined[common_columns]
+    }
+
   # save combined dataset
   if(verbose){message(paste0('writing merged file to:\n',output_file))}
   utils::write.csv(combined,output_file)
@@ -85,7 +95,4 @@ merge_kobo_data<-function(folder,filename_pattern='.',output_file=NULL,write_log
 
   combined<-combined
 }
-
-
-
 
